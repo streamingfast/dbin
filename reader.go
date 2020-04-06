@@ -49,13 +49,13 @@ func (r *Reader) ReadHeader() (contentType string, version int32, err error) {
 		return "", 0, fmt.Errorf("invalid dbin file revision, expected %d, got %d", fileVersion, header[4])
 	}
 
-	contentType := string(header[5:8])
-	version, err := strconv.ParseInt(string(header[8:10]), 10, 32)
+	contentType = string(header[5:8])
+	version64, err := strconv.ParseInt(string(header[8:10]), 10, 32)
 	if err != nil {
 		return "", 0, err
 	}
 
-	return contentType, int32(version), nil
+	return contentType, int32(version64), nil
 }
 
 // ReadMessage reads next message from byte stream
