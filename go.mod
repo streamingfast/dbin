@@ -1,4 +1,4 @@
-module github.com/dfuse-io/dbin
+module github.com/streamingfast/dbin
 
 go 1.12
 
