@@ -20,7 +20,7 @@ Next single byte:
 * file format version, current is `0x01`
 
 Next 2 bytes are big-endian uint16, the length of the proto definition type, to follow:
-* 0x1900
+* 0x0019
 
 Next bytes are the name of the proto def:
 * "sf.ethereum.type.v1.Block"
