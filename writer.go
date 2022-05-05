@@ -42,7 +42,8 @@ func (w *Writer) WriteHeader(contentType string, version int) error {
 
 	cntType := []byte(contentType)
 	if len(cntType) != 3 {
-		return fmt.Errorf("contentType should be 3 characters, was %d %v", len(cntType), cntType)
+		panic(fmt.Errorf("contentType should be 3 characters, was %d %s", len(cntType), string(cntType)))
+		return fmt.Errorf("contentType should be 3 characters, was %d %s", len(cntType), string(cntType))
 	}
 	if version > 99 || version < 0 {
 		return fmt.Errorf("version should be between 0 and 99, was %d", version)
