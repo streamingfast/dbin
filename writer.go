@@ -24,7 +24,7 @@ import (
 	"io"
 )
 
-const fileVersion = byte(1)
+const fileVersion = byte(0)
 
 type Writer struct {
 	io.Writer
@@ -35,29 +35,31 @@ func NewWriter(w io.Writer) *Writer {
 	return &Writer{Writer: w}
 }
 
-func (w *Writer) WriteHeader(contentType string) error {
+func (w *Writer) WriteHeader(contentType string, version int) error {
 	if w.headerWritten {
 		return fmt.Errorf("header already written")
 	}
-	if len(contentType) > 65535 {
-		return fmt.Errorf("content type too long, expected maximum 65535 in length, found %d bytes", len(contentType))
+
+	cntType := []byte(contentType)
+	if len(cntType) != 3 {
+		return fmt.Errorf("contentType should be 3 characters, was %d %v", len(cntType), cntType)
+	}
+	if version > 99 || version < 0 {
+		return fmt.Errorf("version should be between 0 and 99, was %d", version)
 	}
 
-	header := []byte{'d', 'b', 'i', 'n', fileVersion, 0x00, 0x00}
-	binary.BigEndian.PutUint16(header[5:], uint16(len(contentType)))
-	header = append(header, []byte(contentType)...)
+	ver := []byte(fmt.Sprintf("%02d", version))
 
-	written, err := w.Write(header)
+	written, err := w.Write([]byte{'d', 'b', 'i', 'n', fileVersion, cntType[0], cntType[1], cntType[2], ver[0], ver[1]})
 	if err != nil {
 		return err
 	}
 
-	expectedWrite := 7 + len(contentType)
-	if written != expectedWrite {
-		return fmt.Errorf("expected %d bytes written, wrote %d", expectedWrite, written)
-	}
-
 	w.headerWritten = true
+
+	if written != 10 {
+		return fmt.Errorf("incomplete header write (10 bytes): wrote only %d bytes", written)
+	}
 
 	return nil
 }
