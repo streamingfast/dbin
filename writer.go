@@ -1,30 +1,13 @@
 package dbin
 
-// reference
-//First four bytes:
-//* 'd', 'b', 'i', 'n'
-//
-//Next single byte:
-//* file format version, current is `0x00`
-//
-//Next three bytes:
-//* content type, like 'ETH', 'EOS', or whatever..
-//
-//Next two bytes:
-//* 10-based string representation of content version: '00' for version 0, '99', for version 99
-//
-//Rest of the file:
-//* Length-prefixed messages, with each length specified as 4 bytes big-endian uint32.
-//* Followed by message of that length, then start over.
-//* EOF reached when no more bytes exist after the last message boundary.
-
 import (
 	"encoding/binary"
 	"fmt"
 	"io"
 )
 
-const fileVersion = byte(0)
+const fileVersion = byte(1)
+const maxContentTypeLength = 65535
 
 type Writer struct {
 	io.Writer
@@ -35,32 +18,37 @@ func NewWriter(w io.Writer) *Writer {
 	return &Writer{Writer: w}
 }
 
-func (w *Writer) WriteHeader(contentType string, version int) error {
+// WriteHeader writes the header of the file, it should be called only once.
+// contentType ideally is the fullyQualified name of the protocol buffer message
+func (w *Writer) WriteHeader(contentType string) error {
 	if w.headerWritten {
 		return fmt.Errorf("header already written")
 	}
 
 	cntType := []byte(contentType)
-	if len(cntType) != 3 {
-		return fmt.Errorf("contentType should be 3 characters, was %d %v", len(cntType), cntType)
-	}
-	if version > 99 || version < 0 {
-		return fmt.Errorf("version should be between 0 and 99, was %d", version)
+	if len(cntType) > maxContentTypeLength {
+		return fmt.Errorf("contentType length should not exceed %d characters, was %d", maxContentTypeLength, len(cntType))
 	}
 
-	ver := []byte(fmt.Sprintf("%02d", version))
+	if len(cntType) == 0 {
+		return fmt.Errorf("contentType should contain at-least one character")
+	}
 
-	written, err := w.Write([]byte{'d', 'b', 'i', 'n', fileVersion, cntType[0], cntType[1], cntType[2], ver[0], ver[1]})
+	header := []byte{'d', 'b', 'i', 'n', fileVersion, 0x00, 0x00}
+	binary.BigEndian.PutUint16(header[5:], uint16(len(contentType)))
+	header = append(header, []byte(contentType)...)
+	bytesWritten, err := w.Write(header)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to write header: %s", err)
+	}
+
+	expectedBytesWritten := 7 + len(contentType)
+
+	if bytesWritten != expectedBytesWritten {
+		return fmt.Errorf("incomplete header write, expected %d bytes written: wrote only %d bytes", expectedBytesWritten, bytesWritten)
 	}
 
 	w.headerWritten = true
-
-	if written != 10 {
-		return fmt.Errorf("incomplete header write (10 bytes): wrote only %d bytes", written)
-	}
-
 	return nil
 }
 

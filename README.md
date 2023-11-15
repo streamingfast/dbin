@@ -12,6 +12,27 @@ See example usage in [merger](https://github.com/streamingfast/merger)
 
 
 ## File format
+### Version 1
+
+First four magic bytes:
+* 'd', 'b', 'i', 'n'
+
+Next single byte:
+* file format version, current is `0x01`
+
+Next 2 bytes are big-endian uint16, the length of the proto definition type, to follow:
+* like 0x002d for "type.googleapis.com/sf.ethereum.type.v2.Block"
+
+Next bytes are the name of the proto definition with a length defined above:
+* "type.googleapis.com/sf.ethereum.type.v2.Block"
+
+Rest of the file, is a sequence of:
+* Length-prefixed messages, with each length specified as 4 bytes big-endian uint32.
+* Followed by message of that length, then start over.
+* EOF reached when no more bytes exist after the last message boundary.
+
+
+### Version 0
 
 First four magic bytes:
 * 'd', 'b', 'i', 'n'
@@ -25,7 +46,7 @@ Next three bytes:
 Next two bytes:
 * 10-based string representation of content version: '00' for version 0, '99', for version 99
 
-Rest of the file:
+Rest of the file, is a sequence of:
 * Length-prefixed messages, with each length specified as 4 bytes big-endian uint32.
 * Followed by message of that length, then start over.
 * EOF reached when no more bytes exist after the last message boundary.
