@@ -103,9 +103,9 @@ func TestReadWrite(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	r := NewReader(bytes.NewReader(buf.Bytes()))
-	contentType, err := r.ReadHeader()
+	header, err := r.ReadHeader()
 	require.NoError(t, err)
-	assert.Equal(t, "type.googleapis.com/sf.solana.type.v1.Block", contentType)
+	assert.Equal(t, "type.googleapis.com/sf.solana.type.v1.Block", header.ContentType)
 
 	back1, err := r.ReadMessage()
 	require.NoError(t, err)

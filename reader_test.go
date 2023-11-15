@@ -62,15 +62,15 @@ func TestReadHeader(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := NewReader(bytes.NewReader(test.input))
 
-			contentType, err := r.ReadHeader()
+			header, err := r.ReadHeader()
 
 			if test.expectError == "" {
 				require.NoError(t, err)
-				assert.Equal(t, test.expectType, contentType)
+				assert.Equal(t, test.expectType, header.ContentType)
+				assert.Equal(t, test.input, header.Data)
 			} else {
 				require.Error(t, err)
 				assert.Equal(t, test.expectError, err.Error())
-				assert.Equal(t, "", contentType)
 			}
 			assert.NoError(t, r.Close())
 		})
@@ -161,18 +161,6 @@ func TestReadMessage_MessageEmpty(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, msg, 0)
-}
-
-func TestReadMessage_Header_MultiReadNeeded(t *testing.T) {
-	r := NewReader(newTestReader(
-		[]byte{'d', 'b', 'i', 'n', 0x00},
-		[]byte{'E', 'T', 'H', '9', '8'},
-	))
-
-	contentType, err := r.ReadHeader()
-	require.NoError(t, err)
-
-	assert.Equal(t, "ETH", contentType)
 }
 
 func TestReadMessage_MesageLength_MultiReadNeeded(t *testing.T) {

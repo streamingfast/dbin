@@ -29,49 +29,62 @@ func NewReader(r io.Reader) *Reader {
 	return &Reader{Reader: r}
 }
 
-func (r *Reader) ReadHeader() (contentType string, err error) {
+func (r *Reader) ReadHeader() (*Header, error) {
 	if r.readHeaderDone {
-		return "", fmt.Errorf("header was read already")
+		return nil, fmt.Errorf("header was read already")
 	}
 
-	header, err := r.readBytes(5)
+	partialHeader, err := r.readBytes(5)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	if !bytes.HasPrefix(header, magicString) {
-		return "", fmt.Errorf("magic string 'dbin' not found in header")
+	if !bytes.HasPrefix(partialHeader, magicString) {
+		return nil, fmt.Errorf("magic string 'dbin' not found in header")
 	}
 
-	ver := header[4]
-	switch ver {
-	case 0:
-		cType, err := r.readBytes(3)
+	ver := partialHeader[4]
+	header := &Header{
+		Data:        partialHeader,
+		Version:     ver,
+		ContentType: "",
+	}
+
+	if ver == 0 {
+		contentTypeBytes, err := r.readBytes(3)
 		if err != nil {
-			return "", fmt.Errorf("failed to read content type: %s", err)
+			return nil, fmt.Errorf("failed to read content type: %s", err)
 		}
-		if _, err = r.readBytes(2); err != nil {
-			return "", fmt.Errorf("failed to read content version: %w", err)
+		header.Data = append(header.Data, contentTypeBytes...)
+		header.ContentType = string(contentTypeBytes)
+
+		dataVersionByte, err := r.readBytes(2)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read content version: %w", err)
 		}
+		header.Data = append(header.Data, dataVersionByte...)
+		r.readHeaderDone = true
+		return header, nil
+	}
 
-		contentType = string(cType)
-	case 1:
-
+	if ver == 1 {
 		contentTypeLength, err := r.readBytes(2)
 		if err != nil {
-			return "", fmt.Errorf("reading content type length: %w", err)
+			return nil, fmt.Errorf("reading content type length: %w", err)
 		}
+		header.Data = append(header.Data, contentTypeLength...)
+
 		length := binary.BigEndian.Uint16(contentTypeLength)
-		ctype, err := r.readBytes(int(length))
+		contentTypeBytes, err := r.readBytes(int(length))
 		if err != nil {
-			return "", fmt.Errorf("reading content type of length %d: %w", length, err)
+			return nil, fmt.Errorf("reading content type of length %d: %w", length, err)
 		}
-		contentType = string(ctype)
-	default:
-		return "", fmt.Errorf("unsupported file format version: %d", ver)
+		header.Data = append(header.Data, contentTypeBytes...)
+		header.ContentType = string(contentTypeBytes)
+		r.readHeaderDone = true
+		return header, nil
 	}
-	r.readHeaderDone = true
-	return contentType, nil
+	return nil, fmt.Errorf("unsupported file format version: %d", ver)
 }
 
 // ReadMessage reads next message from byte stream
