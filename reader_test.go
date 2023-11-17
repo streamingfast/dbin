@@ -11,32 +11,50 @@ import (
 
 func TestReadHeader(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         []byte
-		expectType    string
-		expectVersion int32
-		expectError   string
+		name        string
+		input       []byte
+		expectType  string
+		expectError string
 	}{
 		{
-			name:          "happy path",
-			input:         []byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8'},
-			expectType:    "ETH",
-			expectVersion: 98,
+			name:       "happy path version 0",
+			input:      []byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8'},
+			expectType: "ETH",
 		},
 		{
-			name:        "bad prefix",
+			name:       "happy path version 1",
+			input:      []byte{'d', 'b', 'i', 'n', 0x01, 0x00, 0x2D, 't', 'y', 'p', 'e', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 's', 'f', '.', 'e', 't', 'h', 'e', 'r', 'e', 'u', 'm', '.', 't', 'y', 'p', 'e', '.', 'v', '2', '.', 'B', 'l', 'o', 'c', 'k'},
+			expectType: "type.googleapis.com/sf.ethereum.type.v2.Block",
+		},
+		{
+			name:        "bad prefix v0",
 			input:       []byte{'d', 'b', 'o', 'b', 0x00, 'E', 'T', 'H', '9', '8'},
 			expectError: "magic string 'dbin' not found in header",
 		},
 		{
-			name:        "bad library revision, or file format version",
-			input:       []byte{'d', 'b', 'i', 'n', 0x01, 'E', 'T', 'H', '9', '8'},
-			expectError: "invalid dbin file revision, expected 0, got 1",
+			name:        "bad prefix v1",
+			input:       []byte{'d', 'b', '0', 'b', 0x01, 0x00, 0x2D, 't', 'y', 'p', 'e', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 's', 'f', '.', 'e', 't', 'h', 'e', 'r', 'e', 'u', 'm', '.', 't', 'y', 'p', 'e', '.', 'v', '2', '.', 'B', 'l', 'o', 'c', 'k'},
+			expectError: "magic string 'dbin' not found in header",
 		},
 		{
-			name:        "incomplete header",
-			input:       []byte{'d', 'b', 'i', 'n', 0x01, 'E', 'T', 'H'},
-			expectError: "unexpected EOF",
+			name:        "file format version",
+			input:       []byte{'d', 'b', 'i', 'n', 0x02, 'E', 'T', 'H', '9', '8'},
+			expectError: "unsupported file format version: 2",
+		},
+		{
+			name:        "incomplete header v0",
+			input:       []byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H'},
+			expectError: "failed to read content version: EOF",
+		},
+		{
+			name:        "incomplete header v1, content type doesn't correspond to length",
+			input:       []byte{'d', 'b', 'i', 'n', 0x01, 0x2D, 'e', 't', 'h'},
+			expectError: "reading content type of length 11621: unexpected EOF",
+		},
+		{
+			name:        "incomplete header v1, missing content type length",
+			input:       []byte{'d', 'b', 'i', 'n', 0x01, 0x2D},
+			expectError: "reading content type length: unexpected EOF",
 		},
 	}
 
@@ -44,17 +62,15 @@ func TestReadHeader(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := NewReader(bytes.NewReader(test.input))
 
-			contentType, version, err := r.ReadHeader()
+			header, err := r.ReadHeader()
 
 			if test.expectError == "" {
-				assert.NoError(t, err)
-				assert.Equal(t, test.expectType, contentType)
-				assert.Equal(t, test.expectVersion, version)
+				require.NoError(t, err)
+				assert.Equal(t, test.expectType, header.ContentType)
+				assert.Equal(t, test.input, header.Data)
 			} else {
 				require.Error(t, err)
 				assert.Equal(t, test.expectError, err.Error())
-				assert.Equal(t, "", contentType)
-				assert.Equal(t, int32(0), version)
 			}
 			assert.NoError(t, r.Close())
 		})
@@ -65,7 +81,7 @@ func TestDoubleReadHeader(t *testing.T) {
 	r := NewReader(bytes.NewReader([]byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8'}))
 	r.ReadHeader()
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 
 	assert.Error(t, err)
 	assert.Equal(t, "header was read already", err.Error())
@@ -77,7 +93,7 @@ func TestReadMessageHappy(t *testing.T) {
 		0x00, 0x00, 0x00, 0x01, // msg 1, length
 		0x61,
 	}))
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	message, err := r.ReadMessage()
@@ -94,7 +110,7 @@ func TestReadMessage_OnlyHeader(t *testing.T) {
 	r := NewReader(bytes.NewReader([]byte{
 		'd', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8',
 	}))
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	message, err := r.ReadMessage()
@@ -102,13 +118,13 @@ func TestReadMessage_OnlyHeader(t *testing.T) {
 	assert.Equal(t, io.EOF, err)
 }
 
-func TestReadMessage_IncompleteMesageLength(t *testing.T) {
+func TestReadMessage_IncompleteMessageLength(t *testing.T) {
 	r := NewReader(newTestReader(
 		[]byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8'},
 		[]byte{0x00, 0x00, 0x00},
 	))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	_, err = r.ReadMessage()
@@ -123,7 +139,7 @@ func TestReadMessage_MessageMissing(t *testing.T) {
 		0x00, 0x00, 0x00, 0x01,
 	}))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	_, err = r.ReadMessage()
@@ -138,26 +154,13 @@ func TestReadMessage_MessageEmpty(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00,
 	}))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	msg, err := r.ReadMessage()
 
 	require.NoError(t, err)
 	assert.Len(t, msg, 0)
-}
-
-func TestReadMessage_Header_MultiReadNeeded(t *testing.T) {
-	r := NewReader(newTestReader(
-		[]byte{'d', 'b', 'i', 'n', 0x00},
-		[]byte{'E', 'T', 'H', '9', '8'},
-	))
-
-	contentType, version, err := r.ReadHeader()
-	require.NoError(t, err)
-
-	assert.Equal(t, "ETH", contentType)
-	assert.Equal(t, int32(98), version)
 }
 
 func TestReadMessage_MesageLength_MultiReadNeeded(t *testing.T) {
@@ -167,7 +170,7 @@ func TestReadMessage_MesageLength_MultiReadNeeded(t *testing.T) {
 		[]byte{0x00, 0x00},
 	))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	msg, err := r.ReadMessage()
@@ -184,7 +187,7 @@ func TestReadMessage_Mesage_MultiReadNeeded(t *testing.T) {
 		[]byte{0xAB, 0xFE},
 	))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	msg, err := r.ReadMessage()
@@ -200,7 +203,7 @@ func TestReadMessage_ReadReturns_BytesAndEOF(t *testing.T) {
 		[]byte{0xAB},
 	))
 
-	_, _, err := r.ReadHeader()
+	_, err := r.ReadHeader()
 	require.NoError(t, err)
 
 	msg, err := r.ReadMessage()
@@ -209,30 +212,10 @@ func TestReadMessage_ReadReturns_BytesAndEOF(t *testing.T) {
 	assert.Len(t, msg, 0)
 }
 
-type testReader struct {
-	messages [][]byte
-	index    int
-}
-
-func newTestReader(messages ...[]byte) *testReader {
-	return &testReader{
-		messages: messages,
+func newTestReader(messages ...[]byte) *bytes.Buffer {
+	var long []byte
+	for _, msg := range messages {
+		long = append(long, msg...)
 	}
-}
-
-func (r *testReader) Read(p []byte) (n int, err error) {
-	if r.index >= len(r.messages) {
-		return 0, io.EOF
-	}
-
-	message := r.messages[r.index]
-	r.index++
-
-	count := copy(p, message)
-
-	if r.index == len(r.messages) {
-		return count, io.EOF
-	}
-
-	return count, nil
+	return bytes.NewBuffer(long)
 }

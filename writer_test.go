@@ -2,6 +2,7 @@ package dbin
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,45 +13,28 @@ func TestWriteHeader(t *testing.T) {
 	tests := []struct {
 		name        string
 		contentType string
-		version     int
 		expect      []byte
 		expectError string
 	}{
 		{
 			name:        "happy path",
-			contentType: "ETH",
-			version:     98,
-			expect:      []byte{'d', 'b', 'i', 'n', 0x00, 'E', 'T', 'H', '9', '8'},
+			contentType: "type.googleapis.com/sf.ethereum.type.v2.Block",
+			expect:      []byte{'d', 'b', 'i', 'n', 0x01, 0x00, 0x2D, 't', 'y', 'p', 'e', '.', 'g', 'o', 'o', 'g', 'l', 'e', 'a', 'p', 'i', 's', '.', 'c', 'o', 'm', '/', 's', 'f', '.', 'e', 't', 'h', 'e', 'r', 'e', 'u', 'm', '.', 't', 'y', 'p', 'e', '.', 'v', '2', '.', 'B', 'l', 'o', 'c', 'k'},
 		},
 		{
 			name:        "content type too long",
-			contentType: "ETHereuuummmz",
-			version:     98,
-			expectError: "contentType should be 3 characters, was 13 [69 84 72 101 114 101 117 117 117 109 109 109 122]",
+			contentType: strings.Repeat("E", maxContentTypeLength+1),
+			expectError: "contentType length should not exceed 65535 characters, was 65536",
 		},
 		{
 			name:        "content type too short",
-			contentType: "À",
-			version:     98,
-			expectError: "contentType should be 3 characters, was 2 [195 128]",
+			contentType: "",
+			expectError: "contentType should contain at-least one character",
 		},
 		{
 			name:        "that's 3 chars UTF-8 dude",
 			contentType: "ÉT",
-			version:     0,
-			expect:      []byte{'d', 'b', 'i', 'n', 0x00, 0xc3, 0x89, 'T', '0', '0'},
-		},
-		{
-			name:        "version out of range low",
-			contentType: "ETH",
-			version:     -1,
-			expectError: "version should be between 0 and 99, was -1",
-		},
-		{
-			name:        "version out of range high",
-			contentType: "ETH",
-			version:     100,
-			expectError: "version should be between 0 and 99, was 100",
+			expect:      []byte{'d', 'b', 'i', 'n', 0x01, 0x00, 0x03, 0xc3, 0x89, 'T'},
 		},
 	}
 
@@ -59,7 +43,7 @@ func TestWriteHeader(t *testing.T) {
 			buf := &bytes.Buffer{}
 			w := NewWriter(buf)
 
-			err := w.WriteHeader(test.contentType, test.version)
+			err := w.WriteHeader(test.contentType)
 
 			if test.expectError == "" {
 				assert.NoError(t, err)
@@ -77,7 +61,7 @@ func TestWriteHeader(t *testing.T) {
 func TestWriteMessages(t *testing.T) {
 	buf := &bytes.Buffer{}
 	w := NewWriter(buf)
-	err := w.WriteHeader("TES", 75) /* such leet */
+	err := w.WriteHeader("eth")
 	require.NoError(t, err)
 
 	err = w.WriteMessage([]byte("pouille"))
@@ -86,7 +70,7 @@ func TestWriteMessages(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []byte{
-		'd', 'b', 'i', 'n', 0x00, 'T', 'E', 'S', '7', '5',
+		'd', 'b', 'i', 'n', 0x01, 0x00, 0x03, 'e', 't', 'h',
 		0x00, 0x00, 0x00, 0x07,
 		'p', 'o', 'u', 'i', 'l', 'l', 'e',
 		0x00, 0x00, 0x00, 0x07,
@@ -98,10 +82,10 @@ func TestWriteMessages(t *testing.T) {
 func TestWriteHeaderDouble(t *testing.T) {
 	buf := &bytes.Buffer{}
 	w := NewWriter(buf)
-	err := w.WriteHeader("TES", 0)
+	err := w.WriteHeader("type.googleapis.com/sf.antelope.type.v1.Block")
 	require.NoError(t, err)
 
-	err = w.WriteHeader("AGA", 14) /* leet speech for again :) */
+	err = w.WriteHeader("type.googleapis.com/sf.antelope.type.v1.Block")
 
 	require.Error(t, err)
 	assert.Equal(t, "header already written", err.Error())
@@ -113,16 +97,15 @@ func TestReadWrite(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	w := NewWriter(buf)
-	require.NoError(t, w.WriteHeader("TES", 75))
+	require.NoError(t, w.WriteHeader("type.googleapis.com/sf.solana.type.v1.Block"))
 	require.NoError(t, w.WriteMessage([]byte(msg1)))
 	require.NoError(t, w.WriteMessage([]byte(msg2)))
 	require.NoError(t, w.Close())
 
 	r := NewReader(bytes.NewReader(buf.Bytes()))
-	contentType, version, err := r.ReadHeader()
+	header, err := r.ReadHeader()
 	require.NoError(t, err)
-	assert.Equal(t, "TES", contentType)
-	assert.Equal(t, int32(75), version)
+	assert.Equal(t, "type.googleapis.com/sf.solana.type.v1.Block", header.ContentType)
 
 	back1, err := r.ReadMessage()
 	require.NoError(t, err)

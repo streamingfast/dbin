@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 )
 
 var magicString = []byte("dbin")
@@ -30,32 +29,62 @@ func NewReader(r io.Reader) *Reader {
 	return &Reader{Reader: r}
 }
 
-func (r *Reader) ReadHeader() (contentType string, version int32, err error) {
+func (r *Reader) ReadHeader() (*Header, error) {
 	if r.readHeaderDone {
-		return "", 0, fmt.Errorf("header was read already")
+		return nil, fmt.Errorf("header was read already")
 	}
 
-	header, err := r.readCompleteBytes(10, "header")
+	partialHeader, err := r.readBytes(5)
 	if err != nil {
-		return "", 0, err
+		return nil, err
 	}
 
-	r.readHeaderDone = true
-	if !bytes.HasPrefix(header, magicString) {
-		return "", 0, fmt.Errorf("magic string 'dbin' not found in header")
+	if !bytes.HasPrefix(partialHeader, magicString) {
+		return nil, fmt.Errorf("magic string 'dbin' not found in header")
 	}
 
-	if header[4] != fileVersion {
-		return "", 0, fmt.Errorf("invalid dbin file revision, expected %d, got %d", fileVersion, header[4])
+	ver := partialHeader[4]
+	header := &Header{
+		Data:        partialHeader,
+		Version:     ver,
+		ContentType: "",
 	}
 
-	contentType = string(header[5:8])
-	version64, err := strconv.ParseInt(string(header[8:10]), 10, 32)
-	if err != nil {
-		return "", 0, err
+	if ver == 0 {
+		contentTypeBytes, err := r.readBytes(3)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read content type: %s", err)
+		}
+		header.Data = append(header.Data, contentTypeBytes...)
+		header.ContentType = string(contentTypeBytes)
+
+		dataVersionByte, err := r.readBytes(2)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read content version: %w", err)
+		}
+		header.Data = append(header.Data, dataVersionByte...)
+		r.readHeaderDone = true
+		return header, nil
 	}
 
-	return contentType, int32(version64), nil
+	if ver == 1 {
+		contentTypeLength, err := r.readBytes(2)
+		if err != nil {
+			return nil, fmt.Errorf("reading content type length: %w", err)
+		}
+		header.Data = append(header.Data, contentTypeLength...)
+
+		length := binary.BigEndian.Uint16(contentTypeLength)
+		contentTypeBytes, err := r.readBytes(int(length))
+		if err != nil {
+			return nil, fmt.Errorf("reading content type of length %d: %w", length, err)
+		}
+		header.Data = append(header.Data, contentTypeBytes...)
+		header.ContentType = string(contentTypeBytes)
+		r.readHeaderDone = true
+		return header, nil
+	}
+	return nil, fmt.Errorf("unsupported file format version: %d", ver)
 }
 
 // ReadMessage reads next message from byte stream
@@ -74,7 +103,7 @@ func (r *Reader) ReadMessage() ([]byte, error) {
 		return []byte{}, err
 	}
 
-	messageBytes, err := r.readCompleteBytes(length, "message")
+	messageBytes, err := r.readBytes(length)
 	if messageBytes == nil {
 		return nil, err
 	}
@@ -88,13 +117,6 @@ func (r *Reader) Close() error {
 	}
 
 	return nil
-}
-
-func (r *Reader) readCompleteBytes(length int, tag string) ([]byte, error) {
-	bytes := make([]byte, length)
-	_, err := io.ReadFull(r.Reader, bytes)
-
-	return bytes, err
 }
 
 func (r *Reader) readBytes(length int) ([]byte, error) {
