@@ -45,7 +45,7 @@ func (r *Reader) ReadHeader() (*Header, error) {
 
 	ver := partialHeader[4]
 	header := &Header{
-		Data:        partialHeader,
+		RawBytes:    partialHeader,
 		Version:     ver,
 		ContentType: "",
 	}
@@ -55,14 +55,14 @@ func (r *Reader) ReadHeader() (*Header, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read content type: %s", err)
 		}
-		header.Data = append(header.Data, contentTypeBytes...)
+		header.RawBytes = append(header.RawBytes, contentTypeBytes...)
 		header.ContentType = string(contentTypeBytes)
 
 		dataVersionByte, err := r.readBytes(2)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read content version: %w", err)
 		}
-		header.Data = append(header.Data, dataVersionByte...)
+		header.RawBytes = append(header.RawBytes, dataVersionByte...)
 		r.readHeaderDone = true
 		return header, nil
 	}
@@ -72,14 +72,14 @@ func (r *Reader) ReadHeader() (*Header, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading content type length: %w", err)
 		}
-		header.Data = append(header.Data, contentTypeLength...)
+		header.RawBytes = append(header.RawBytes, contentTypeLength...)
 
 		length := binary.BigEndian.Uint16(contentTypeLength)
 		contentTypeBytes, err := r.readBytes(int(length))
 		if err != nil {
 			return nil, fmt.Errorf("reading content type of length %d: %w", length, err)
 		}
-		header.Data = append(header.Data, contentTypeBytes...)
+		header.RawBytes = append(header.RawBytes, contentTypeBytes...)
 		header.ContentType = string(contentTypeBytes)
 		r.readHeaderDone = true
 		return header, nil

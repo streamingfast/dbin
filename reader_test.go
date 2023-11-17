@@ -67,7 +67,7 @@ func TestReadHeader(t *testing.T) {
 			if test.expectError == "" {
 				require.NoError(t, err)
 				assert.Equal(t, test.expectType, header.ContentType)
-				assert.Equal(t, test.input, header.Data)
+				assert.Equal(t, test.input, header.RawBytes)
 			} else {
 				require.Error(t, err)
 				assert.Equal(t, test.expectError, err.Error())

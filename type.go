@@ -1,7 +1,7 @@
 package dbin
 
 type Header struct {
-	RawData     []byte
+	RawBytes    []byte
 	ContentType string
 	Version     uint8
 }
